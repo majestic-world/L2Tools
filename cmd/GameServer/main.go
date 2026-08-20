@@ -111,6 +111,30 @@ func loadConfig() *ServerConfig {
 		os.Exit(1)
 	}
 
+	config.ServerPath = filepath.Clean(config.ServerPath)
+	config.JavaPath = filepath.Clean(config.JavaPath)
+
+	if info, err := os.Stat(config.ServerPath); err != nil || !info.IsDir() {
+		setColor("red")
+		fmt.Println("Error: ServerPath is not a valid directory:")
+		fmt.Println(config.ServerPath)
+		fmt.Println("\nThe JVM's working directory must exist on disk. Check GameServer.properties.")
+		resetColor()
+		fmt.Println("\nPress any key to exit...")
+		waitForKey()
+		os.Exit(1)
+	}
+
+	if info, err := os.Stat(config.JavaPath); err != nil || !info.IsDir() {
+		setColor("red")
+		fmt.Println("Error: JavaPath is not a valid directory:")
+		fmt.Println(config.JavaPath)
+		resetColor()
+		fmt.Println("\nPress any key to exit...")
+		waitForKey()
+		os.Exit(1)
+	}
+
 	return config
 }
 
