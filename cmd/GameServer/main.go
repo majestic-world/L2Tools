@@ -157,7 +157,16 @@ func loadConfig() *ServerConfig {
 }
 
 func consoleCtrlHandler(ctrlType uint32) uintptr {
-	if ctrlType == 0 || ctrlType == 2 {
+	switch ctrlType {
+	case 0: // CTRL_C_EVENT: restart the server
+		fmt.Println("\n\nRestart requested. Stopping server safely...")
+		pid := atomic.LoadUint32(&serverProcessID)
+		if pid != 0 {
+			stopServerByPid(pid)
+		}
+		time.Sleep(2 * time.Second)
+		return 1
+	case 2: // CTRL_CLOSE_EVENT: console closing, stop and let the process exit
 		fmt.Println("\n\nShutdown signal received. Stopping server safely...")
 		pid := atomic.LoadUint32(&serverProcessID)
 		if pid != 0 {
@@ -230,15 +239,14 @@ func clearScreen() {
 	fmt.Print("\033[2J\033[H")
 }
 
-func startServer(config *ServerConfig, updateFirst bool) {
+func startServer(config *ServerConfig) {
 	clearScreen()
+	drawHeader()
 
-	if updateFirst {
-		updateJars(config)
-	}
+	updateJars(config)
 
 	setColor("cyan")
-	fmt.Println("Starting server... (Press Ctrl+C to stop safely)\n")
+	fmt.Println("Starting server... (Press Ctrl+C to restart safely)\n")
 	resetColor()
 
 	cmdPath := "java"
@@ -322,7 +330,6 @@ func startServer(config *ServerConfig, updateFirst bool) {
 		fmt.Println("========================================")
 		resetColor()
 		time.Sleep(2 * time.Second)
-		startServer(config, true)
 	case 1:
 		setColor("red")
 		fmt.Println("\n========================================")
@@ -370,11 +377,6 @@ func stopServerByPid(pid uint32) {
 		}
 		syscall.CloseHandle(h)
 	}
-}
-
-func stopServer() {
-	pid := atomic.LoadUint32(&serverProcessID)
-	stopServerByPid(pid)
 }
 
 func updateJars(config *ServerConfig) {
@@ -448,34 +450,6 @@ func main() {
 	procSetConsoleCtrlHandler.Call(cb, 1)
 
 	for {
-		clearScreen()
-		drawHeader()
-
-		fmt.Println("1. Start Server")
-		fmt.Println("2. Start Server (with updates)")
-		fmt.Print("\nSelect option: ")
-
-		reader := bufio.NewReader(os.Stdin)
-		option, _ := reader.ReadString('\n')
-		option = strings.TrimSpace(option)
-
-		switch option {
-		case "1":
-			startServer(config, false)
-		case "2":
-			startServer(config, true)
-		case "3":
-			updateJars(config)
-		case "4":
-			stopServer()
-		case "5":
-			c := readChar()
-			if c == 'y' || c == 'Y' {
-				stopServer()
-				return
-			} else {
-				continue
-			}
-		}
+		startServer(config)
 	}
 }

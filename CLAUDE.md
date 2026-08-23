@@ -48,10 +48,10 @@ Both tools are **single-file, stdlib-only Go programs** — no external Go depen
 
 ### GameServer runtime flow
 1. Reads `GameServer.properties` from the working directory.
-2. Presents a 5-item menu (Start / Start+Update / UpdateJars / Stop / Exit).
-3. Spawns the JVM via `os/exec`, attaches to its console for graceful `CTRL_C` shutdown.
-4. On "UpdateJars": copies JARs from `OutputJarPath` (semicolon-delimited) to `ServerCopyPath`, skipping any names in `excludeJar` (semicolon-delimited).
-5. Auto-restarts on exit code 2; reports error on exit code 1.
+2. No menu: immediately copies JARs from `OutputJarPath` (semicolon-delimited) to `ServerCopyPath`, skipping any names in `excludeJar` (semicolon-delimited), then spawns the JVM.
+3. Attaches to the JVM's console for graceful `CTRL_C` handling; the manager itself loops forever.
+4. `CTRL_C` (`CTRL_C_EVENT`): stops the server gracefully, then the loop restarts it with a fresh update pass. Closing the console window (`CTRL_CLOSE_EVENT`) stops the server and lets the manager process exit.
+5. Exit code 2 from the JVM (in-app restart request) or exit code 1 (error, paused for a keypress) both fall back to the same loop, which restarts with update.
 
 ### InterfaceBuilder runtime flow
 1. Reads `config.properties` from the working directory.
