@@ -31,13 +31,23 @@ type ServerConfig struct {
 	JavaPath       string
 	JavaArgs       string
 	OutputJarPaths []string
+	ExcludeJars    []string
 }
 
 func (c *ServerConfig) ResolvedCopyPath() string {
 	if c.ServerCopyPath == "" {
 		return c.ServerPath
 	}
-	return filepath.Join(c.ServerPath, c.ServerCopyPath)
+	return c.ServerCopyPath
+}
+
+func (c *ServerConfig) isExcludedJar(fileName string) bool {
+	for _, ex := range c.ExcludeJars {
+		if strings.EqualFold(ex, fileName) {
+			return true
+		}
+	}
+	return false
 }
 
 func loadConfig() *ServerConfig {
@@ -97,11 +107,19 @@ func loadConfig() *ServerConfig {
 						config.OutputJarPaths = append(config.OutputJarPaths, p)
 					}
 				}
+			case "excludeJar":
+				jars := strings.Split(val, ";")
+				for _, j := range jars {
+					j = strings.TrimSpace(j)
+					if j != "" {
+						config.ExcludeJars = append(config.ExcludeJars, j)
+					}
+				}
 			}
 		}
 	}
 
-	if config.ServerPath == "" || config.JavaPath == "" || config.JavaArgs == "" || len(config.OutputJarPaths) == 0 {
+	if config.ServerPath == "" || config.JavaArgs == "" || len(config.OutputJarPaths) == 0 {
 		setColor("red")
 		fmt.Println("Error: Configuration file is incomplete!")
 		fmt.Println("Please check all required properties are set.")
@@ -199,9 +217,12 @@ func startServer(config *ServerConfig, updateFirst bool) {
 	fmt.Println("Starting server... (Press Ctrl+C to stop safely)\n")
 	resetColor()
 
-	cmdPath := filepath.Join(config.JavaPath, "java.exe")
-	if _, err := os.Stat(cmdPath); os.IsNotExist(err) {
-		cmdPath = filepath.Join(config.JavaPath, "java")
+	cmdPath := "java"
+	if config.JavaPath != "" {
+		cmdPath = filepath.Join(config.JavaPath, "java.exe")
+		if _, err := os.Stat(cmdPath); os.IsNotExist(err) {
+			cmdPath = filepath.Join(config.JavaPath, "java")
+		}
 	}
 
 	cmd := exec.Command(cmdPath)
@@ -350,7 +371,7 @@ func updateJars(config *ServerConfig) {
 
 		var jarFiles []string
 		for _, entry := range entries {
-			if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".jar") {
+			if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".jar") && !config.isExcludedJar(entry.Name()) {
 				jarFiles = append(jarFiles, filepath.Join(outputPath, entry.Name()))
 			}
 		}

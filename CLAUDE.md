@@ -50,7 +50,7 @@ Both tools are **single-file, stdlib-only Go programs** — no external Go depen
 1. Reads `GameServer.properties` from the working directory.
 2. Presents a 5-item menu (Start / Start+Update / UpdateJars / Stop / Exit).
 3. Spawns the JVM via `os/exec`, attaches to its console for graceful `CTRL_C` shutdown.
-4. On "UpdateJars": copies JARs from `OutputJarPath` (semicolon-delimited) to `ServerCopyPath`.
+4. On "UpdateJars": copies JARs from `OutputJarPath` (semicolon-delimited) to `ServerCopyPath`, skipping any names in `excludeJar` (semicolon-delimited).
 5. Auto-restarts on exit code 2; reports error on exit code 1.
 
 ### InterfaceBuilder runtime flow
@@ -73,10 +73,11 @@ All code is Windows-specific; no cross-platform abstraction layer.
 `GameServer.properties` — must sit next to the executable:
 ```
 ServerPath=<server root>
-ServerCopyPath=<relative JAR deploy path>
-JavaPath=<JDK bin dir>
+ServerCopyPath=<literal JAR deploy path>
+JavaPath=<JDK bin dir, optional; falls back to `java` on PATH>
 JavaArgs=<JVM flags and main class>
 OutputJarPath=<path1>;<path2>
+excludeJar=<jar1>;<jar2>  # optional, JARs to skip when copying
 ```
 
 `config.properties` — must sit next to Builder.exe:
