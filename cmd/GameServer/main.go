@@ -236,7 +236,7 @@ func waitForKey() {
 }
 
 func clearScreen() {
-	fmt.Print("\033[2J\033[H")
+	fmt.Print("\033[2J\033[3J\033[H")
 }
 
 func startServer(config *ServerConfig) {
@@ -246,7 +246,7 @@ func startServer(config *ServerConfig) {
 	updateJars(config)
 
 	setColor("cyan")
-	fmt.Println("Starting server... (Press Ctrl+C to restart safely)\n")
+	fmt.Print("Starting server... (Press Ctrl+C to restart safely)\n\n")
 	resetColor()
 
 	cmdPath := "java"
