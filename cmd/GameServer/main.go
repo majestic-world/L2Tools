@@ -13,17 +13,104 @@ import (
 	"unsafe"
 )
 
-const PROCESS_ALL_ACCESS = 0x1F0FFF
+const (
+	PROCESS_ALL_ACCESS                     = 0x1F0FFF
+	jobObjectExtendedLimitInformationClass = 9
+	jobObjectLimitKillOnJobClose           = 0x00002000
+)
 
 var (
 	serverProcessID              uint32
+	serverJob                    *killOnCloseJob
 	kernel32                     = syscall.NewLazyDLL("kernel32.dll")
 	procAttachConsole            = kernel32.NewProc("AttachConsole")
 	procSetConsoleCtrlHandler    = kernel32.NewProc("SetConsoleCtrlHandler")
 	procGenerateConsoleCtrlEvent = kernel32.NewProc("GenerateConsoleCtrlEvent")
 	procFreeConsole              = kernel32.NewProc("FreeConsole")
 	procSetConsoleTitleW         = kernel32.NewProc("SetConsoleTitleW")
+	procCreateJobObject          = kernel32.NewProc("CreateJobObjectW")
+	procSetInformationJobObject  = kernel32.NewProc("SetInformationJobObject")
+	procAssignProcessToJobObject = kernel32.NewProc("AssignProcessToJobObject")
 )
+
+type jobObjectBasicLimitInformation struct {
+	perProcessUserTimeLimit int64
+	perJobUserTimeLimit     int64
+	limitFlags              uint32
+	minimumWorkingSetSize   uintptr
+	maximumWorkingSetSize   uintptr
+	activeProcessLimit      uint32
+	affinity                uintptr
+	priorityClass           uint32
+	schedulingClass         uint32
+}
+type ioCounters struct {
+	readOperationCount  uint64
+	writeOperationCount uint64
+	otherOperationCount uint64
+	readTransferCount   uint64
+	writeTransferCount  uint64
+	otherTransferCount  uint64
+}
+
+type jobObjectExtendedLimitInformation struct {
+	basicLimitInformation jobObjectBasicLimitInformation
+	ioInfo                ioCounters
+	processMemoryLimit    uintptr
+	jobMemoryLimit        uintptr
+	peakProcessMemoryUsed uintptr
+	peakJobMemoryUsed     uintptr
+}
+
+type killOnCloseJob struct {
+	handle syscall.Handle
+}
+
+func newKillOnCloseJob() (*killOnCloseJob, error) {
+	handle, _, callErr := procCreateJobObject.Call(0, 0)
+	if handle == 0 {
+		return nil, winCallError(callErr)
+	}
+
+	limits := jobObjectExtendedLimitInformation{
+		basicLimitInformation: jobObjectBasicLimitInformation{
+			limitFlags: jobObjectLimitKillOnJobClose,
+		},
+	}
+	result, _, callErr := procSetInformationJobObject.Call(
+		handle,
+		jobObjectExtendedLimitInformationClass,
+		uintptr(unsafe.Pointer(&limits)),
+		unsafe.Sizeof(limits),
+	)
+	if result == 0 {
+		syscall.CloseHandle(syscall.Handle(handle))
+		return nil, winCallError(callErr)
+	}
+
+	return &killOnCloseJob{handle: syscall.Handle(handle)}, nil
+}
+
+func (job *killOnCloseJob) assignCurrentProcess() error {
+	process, err := syscall.OpenProcess(PROCESS_ALL_ACCESS, false, uint32(os.Getpid()))
+	if err != nil {
+		return err
+	}
+	defer syscall.CloseHandle(process)
+
+	result, _, callErr := procAssignProcessToJobObject.Call(uintptr(job.handle), uintptr(process))
+	if result == 0 {
+		return winCallError(callErr)
+	}
+	return nil
+}
+
+func winCallError(callErr error) error {
+	if errno, ok := callErr.(syscall.Errno); !ok || errno != 0 {
+		return callErr
+	}
+	return syscall.EINVAL
+}
 
 type ServerConfig struct {
 	ServerPath     string
@@ -443,6 +530,22 @@ func main() {
 
 	ptr, _ := syscall.UTF16PtrFromString("GameServer Manager By Mk")
 	procSetConsoleTitleW.Call(uintptr(unsafe.Pointer(ptr)))
+
+	var err error
+	serverJob, err = newKillOnCloseJob()
+	if err != nil {
+		setColor("red")
+		fmt.Printf("Failed to create process lifetime job: %v\n", err)
+		resetColor()
+		return
+	}
+	if err := serverJob.assignCurrentProcess(); err != nil {
+		setColor("red")
+		fmt.Printf("Failed to bind manager to process lifetime job: %v\n", err)
+		resetColor()
+		syscall.CloseHandle(serverJob.handle)
+		return
+	}
 
 	config := loadConfig()
 
